@@ -1,0 +1,33 @@
+[project]
+name = "whisper-timestamped-service"
+version = "0.1.0"
+description = "Separate HTTP service for Whisper timestamped transcription"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "TBD" }
+authors = [
+  { name = "Jörg Leu" },
+]
+dependencies = [
+  "fastapi>=0.115.0,<1.0.0",
+  "python-multipart>=0.0.20,<1.0.0",
+  "uvicorn[standard]>=0.34.0,<1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0,<9.0.0",
+  "httpx>=0.28.0,<1.0.0",
+]
+local = [
+  "numpy>=1.26.0,<3.0.0",
+  "torch>=2.3.0,<3.0.0",
+  "whisper-timestamped>=1.15.6,<2.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
