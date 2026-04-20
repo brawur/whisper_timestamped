@@ -39,9 +39,111 @@ pip install -e .[dev,local]
 uvicorn app.main:app --reload
 ```
 
+Model resolution:
+
+- if `WHISPER_MODEL_DIR` is set, the service first looks for mounted files like `small.pt`, `medium.pt`, or `large-v1.pt` in that directory
+- if a matching file exists, the service loads it directly and does not download the model again
+- if no matching file exists, Whisper still uses `WHISPER_MODEL_DIR` as its download/cache root, so downloaded models land in the shared mounted directory
+
+Example:
+
+```bash
+WHISPER_MODEL_DIR="$HOME/.cache/whisper" \
+uvicorn app.main:app --reload
+```
+
 ## Docker
 
 ```bash
 docker build -t whisper-timestamped-service .
-docker run --rm -p 8001:8000 whisper-timestamped-service
+docker run --rm \
+  -p 8001:8000 \
+  -e WHISPER_MODEL_DIR=/models/whisper \
+  -v "$HOME/.cache/whisper:/models/whisper" \
+  whisper-timestamped-service
+```
+
+With this mount, existing host models like `~/.cache/whisper/large-v1.pt` or `~/.cache/whisper/small.pt` are reused by the container.
+
+### Build-Time `openai_public.py` Override
+
+If you have a patched `tiktoken_ext/openai_public.py` for fully offline execution, you can bake it directly into the image build:
+
+1. copy your patched file to:
+   `whisper_timestamped/docker-overrides/tiktoken_ext/openai_public.py`
+2. build the image again:
+
+```bash
+docker build -t whisper-timestamped-service .
+```
+
+During the build, that file is copied into:
+
+- `/usr/local/lib/python3.11/site-packages/tiktoken_ext/openai_public.py`
+
+This is usually cleaner than a runtime file mount because the image already contains the offline patch.
+
+## Docker Compose
+
+Start from the example environment file:
+
+```bash
+cp .env.example .env
+```
+
+Adjust these values as needed:
+
+- `WHISPER_CACHE_DIR` for the host Whisper model cache directory
+- `WHISPER_MODEL_DIR` for the container-side mount target
+- `WHISPER_OPENAI_PUBLIC_PATCH_FILE` for the optional runtime `openai_public.py` patch source
+- `WHISPER_DEVICE` for CPU/GPU selection
+
+```bash
+docker compose up --build
+```
+
+The provided Compose file mounts `${WHISPER_CACHE_DIR:-~/.cache/whisper}` into the container at `${WHISPER_MODEL_DIR:-/models/whisper}` so the host Whisper cache is reused directly.
+
+The Compose setup also requests one NVIDIA GPU for the container, mirroring the Parakeet setup. With `WHISPER_DEVICE=auto`, the service prefers CUDA when Docker GPU support is available and falls back to CPU otherwise.
+
+Default Compose behavior:
+
+- reuses the host Whisper model cache via volume mount
+- uses the build-time `openai_public.py` override if you placed it under `docker-overrides/tiktoken_ext/openai_public.py` before `docker compose up --build`
+
+If you want to keep the image generic and inject the patched `openai_public.py` only at runtime, use the additional Compose overlay:
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.runtime-patch.yml \
+  up --build
+```
+
+That overlay mounts:
+
+- host source default:
+  `/home/media4cast/.local/share/pipx/venvs/whisper-timestamped/lib/python3.12/site-packages/tiktoken_ext/openai_public.py`
+- container target:
+  `/usr/local/lib/python3.11/site-packages/tiktoken_ext/openai_public.py`
+
+Override the host source path with `WHISPER_OPENAI_PUBLIC_PATCH_FILE` if needed.
+
+## Combined Root Compose
+
+The repository root also provides a shared Compose setup for both services:
+
+```bash
+cd ..
+cp .env.example .env
+docker compose up --build
+```
+
+Optional runtime patch overlay from the repository root:
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.runtime-patch.yml \
+  up --build
 ```

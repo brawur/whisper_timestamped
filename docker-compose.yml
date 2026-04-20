@@ -1,0 +1,18 @@
+services:
+  whisper-timestamped:
+    build:
+      context: .
+    environment:
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-auto}
+      WHISPER_MODEL_DIR: ${WHISPER_MODEL_DIR:-/models/whisper}
+    ports:
+      - "8001:8000"
+    volumes:
+      - ${WHISPER_CACHE_DIR:-${HOME}/.cache/whisper}:${WHISPER_MODEL_DIR:-/models/whisper}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: ["gpu"]
