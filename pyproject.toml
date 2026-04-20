@@ -22,6 +22,7 @@ dev = [
 local = [
   "numpy>=1.26.0,<3.0.0",
   "torch>=2.3.0,<3.0.0",
+  "auditok>=0.1.8,<1.0.0",
   "whisper-timestamped>=1.15.6,<2.0.0",
 ]
 

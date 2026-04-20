@@ -16,17 +16,28 @@ Implemented:
 - `GET /metadata`
 - `POST /transcribe/file`
 
-`POST /transcribe/file` accepts:
+`POST /transcribe/file` accepts `multipart/form-data` fields:
 
 - `file`
 - `model`
 - `language`
-- `prompt`
+- `initial_prompt`
 - `beam_size`
 - `best_of`
 - `temperature`
 - `condition_on_previous_text`
 - `vad`
+- `vad_mode`
+- `task`
+- `no_speech_threshold`
+- `detect_disfluencies`
+- `accurate`
+
+Body-first API note:
+
+- Whisper options are expected in the multipart body, not in the query string
+- existing query parameters are still accepted as a temporary compatibility fallback
+- `initial_prompt`, `temperature`, and `no_speech_threshold` are optional and are only forwarded when explicitly provided
 
 The service is meant to be called by the Parakeet gateway over HTTP.
 
@@ -39,6 +50,14 @@ pip install -e .[dev,local]
 uvicorn app.main:app --reload
 ```
 
+Offline VAD note:
+
+- `whisper-timestamped` supports multiple VAD backends such as Silero and Auditok
+- for this service, offline-safe VAD is limited to `auditok`
+- `auditok` is therefore installed as part of `.[local]`
+- `vad=true` in this service maps internally to `vad_mode=auditok`
+- `silero` is intentionally not used here because it may trigger online model/version resolution
+
 Model resolution:
 
 - if `WHISPER_MODEL_DIR` is set, the service first looks for mounted files like `small.pt`, `medium.pt`, or `large-v1.pt` in that directory
@@ -50,6 +69,25 @@ Example:
 ```bash
 WHISPER_MODEL_DIR="$HOME/.cache/whisper" \
 uvicorn app.main:app --reload
+```
+
+VAD examples:
+
+```bash
+curl -F "file=@sample.wav" \
+  -F "model=small" \
+  -F "vad=true" \
+  http://127.0.0.1:8001/transcribe/file
+```
+
+Explicit offline-safe VAD mode:
+
+```bash
+curl -F "file=@sample.wav" \
+  -F "model=small" \
+  -F "vad=true" \
+  -F "vad_mode=auditok" \
+  http://127.0.0.1:8001/transcribe/file
 ```
 
 ## Docker

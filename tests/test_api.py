@@ -17,12 +17,17 @@ class FakeService:
         source_name: str | None,
         model: str,
         language: str | None,
-        prompt: str,
+        prompt: str | None,
         beam_size: int,
         best_of: int,
-        temperature: float,
+        temperature: float | None,
         condition_on_previous_text: bool,
         vad: bool,
+        vad_mode: str | None,
+        task: str,
+        no_speech_threshold: float | None,
+        detect_disfluencies: bool,
+        accurate: bool,
     ):
         assert media_bytes == b"RIFFfake"
         assert source_name == "sample.wav"
@@ -30,9 +35,15 @@ class FakeService:
         assert language == "de"
         assert beam_size == 3
         assert best_of == 5
-        assert temperature == 0.0
+        assert prompt is None
+        assert temperature is None
         assert condition_on_previous_text is True
         assert vad is False
+        assert vad_mode is None
+        assert task == "transcribe"
+        assert no_speech_threshold is None
+        assert detect_disfluencies is True
+        assert accurate is True
         return {
             "text": "hallo welt",
             "language": "de",
@@ -69,21 +80,32 @@ class FakeWorkerService(transcription.WhisperTimestampedService):
         wav_path: str,
         model: str,
         language: str | None,
-        prompt: str,
+        prompt: str | None,
         beam_size: int,
         best_of: int,
-        temperature: float,
+        temperature: float | None,
         condition_on_previous_text: bool,
         vad: bool,
+        vad_mode: str | None,
+        task: str,
+        no_speech_threshold: float | None,
+        detect_disfluencies: bool,
+        accurate: bool,
     ) -> transcription.FileTranscriptionResponse:
         assert Path(wav_path).exists()
         assert model == "small"
         assert language == "de"
         assert beam_size == 3
         assert best_of == 5
-        assert temperature == 0.0
+        assert prompt is None
+        assert temperature is None
         assert condition_on_previous_text is True
         assert vad is False
+        assert vad_mode is None
+        assert task == "transcribe"
+        assert no_speech_threshold is None
+        assert detect_disfluencies is True
+        assert accurate is True
         return transcription.FileTranscriptionResponse(
             text="hallo welt",
             language="de",
@@ -156,8 +178,13 @@ def test_file_transcription_response() -> None:
         transcription._service = FakeWorkerService()
         async with await _get_client() as client:
             response = await client.post(
-                "/transcribe/file?model=small&language=de&beam_size=3",
-                files={"file": ("sample.wav", b"RIFFfake", "audio/wav")},
+                "/transcribe/file",
+                files={
+                    "file": ("sample.wav", b"RIFFfake", "audio/wav"),
+                    "model": (None, "small"),
+                    "language": (None, "de"),
+                    "beam_size": (None, "3"),
+                },
             )
             assert response.status_code == 200
             body = response.json()
@@ -167,6 +194,89 @@ def test_file_transcription_response() -> None:
             assert body["model"] == "small"
             assert body["processing_ms"] >= 0
             assert body["segments"][0]["words"][0]["text"] == "hallo"
+        transcription._service = None
+
+    asyncio.run(run())
+
+
+def test_file_transcription_uses_auditok_when_vad_enabled() -> None:
+    class FakeVadWorkerService(transcription.WhisperTimestampedService):
+        def _normalize_media_to_wav(self, media_bytes: bytes, *, source_name: str | None) -> str:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as output_file:
+                path = Path(output_file.name)
+            path.write_bytes(b"fake-wav")
+            return str(path)
+
+        def _run_worker_process(
+            self,
+            *,
+            wav_path: str,
+            model: str,
+            language: str | None,
+            prompt: str | None,
+            beam_size: int,
+            best_of: int,
+            temperature: float | None,
+            condition_on_previous_text: bool,
+            vad: bool,
+            vad_mode: str | None,
+            task: str,
+            no_speech_threshold: float | None,
+            detect_disfluencies: bool,
+            accurate: bool,
+        ) -> transcription.FileTranscriptionResponse:
+            assert vad is True
+            assert vad_mode is None
+            assert task == "transcribe"
+            assert prompt is None
+            assert temperature is None
+            assert no_speech_threshold is None
+            assert detect_disfluencies is True
+            assert accurate is True
+            assert self._resolve_vad_mode(vad=vad, vad_mode=vad_mode) == "auditok"
+            return transcription.FileTranscriptionResponse(
+                text="hallo welt",
+                language="de",
+                duration_seconds=1.25,
+                model=model,
+                processing_ms=12,
+                segments=[],
+            )
+
+    async def run() -> None:
+        transcription._service = FakeVadWorkerService()
+        async with await _get_client() as client:
+            response = await client.post(
+                "/transcribe/file",
+                files={
+                    "file": ("sample.wav", b"RIFFfake", "audio/wav"),
+                    "model": (None, "small"),
+                    "language": (None, "de"),
+                    "vad": (None, "true"),
+                },
+            )
+            assert response.status_code == 200
+        transcription._service = None
+
+    asyncio.run(run())
+
+
+def test_file_transcription_rejects_non_auditok_vad_mode() -> None:
+    async def run() -> None:
+        transcription._service = transcription.WhisperTimestampedService()
+        async with await _get_client() as client:
+            response = await client.post(
+                "/transcribe/file",
+                files={
+                    "file": ("sample.wav", b"RIFFfake", "audio/wav"),
+                    "model": (None, "small"),
+                    "language": (None, "de"),
+                    "vad": (None, "true"),
+                    "vad_mode": (None, "silero"),
+                },
+            )
+            assert response.status_code == 502
+            assert "Only auditok VAD is supported in offline mode" in response.json()["detail"]
         transcription._service = None
 
     asyncio.run(run())

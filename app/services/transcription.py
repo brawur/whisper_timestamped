@@ -29,14 +29,20 @@ class WhisperTimestampedService:
         source_name: str | None,
         model: str,
         language: str | None,
-        prompt: str,
+        prompt: str | None,
         beam_size: int,
         best_of: int,
-        temperature: float,
+        temperature: float | None,
         condition_on_previous_text: bool,
         vad: bool,
+        vad_mode: str | None,
+        task: str,
+        no_speech_threshold: float | None,
+        detect_disfluencies: bool,
+        accurate: bool,
     ) -> FileTranscriptionResponse:
         started = time.monotonic()
+        self._resolve_vad_mode(vad=vad, vad_mode=vad_mode)
         wav_path = self._normalize_media_to_wav(media_bytes, source_name=source_name)
         try:
             worker_response = self._run_worker_process(
@@ -49,6 +55,11 @@ class WhisperTimestampedService:
                 temperature=temperature,
                 condition_on_previous_text=condition_on_previous_text,
                 vad=vad,
+                vad_mode=vad_mode,
+                task=task,
+                no_speech_threshold=no_speech_threshold,
+                detect_disfluencies=detect_disfluencies,
+                accurate=accurate,
             )
         finally:
             Path(wav_path).unlink(missing_ok=True)
@@ -134,12 +145,17 @@ class WhisperTimestampedService:
         wav_path: str,
         model: str,
         language: str | None,
-        prompt: str,
+        prompt: str | None,
         beam_size: int,
         best_of: int,
-        temperature: float,
+        temperature: float | None,
         condition_on_previous_text: bool,
         vad: bool,
+        vad_mode: str | None,
+        task: str,
+        no_speech_threshold: float | None,
+        detect_disfluencies: bool,
+        accurate: bool,
     ) -> dict[str, Any]:
         try:
             import whisper_timestamped as whisper  # type: ignore[import-not-found]
@@ -150,17 +166,27 @@ class WhisperTimestampedService:
 
         runtime_device = self._resolve_runtime_device()
         model_instance = self._load_model(model, runtime_device, whisper)
+        resolved_vad = self._resolve_vad_mode(vad=vad, vad_mode=vad_mode)
+        effective_beam_size, effective_best_of, effective_temperature = self._resolve_accuracy_options(
+            beam_size=beam_size,
+            best_of=best_of,
+            temperature=temperature,
+            accurate=accurate,
+        )
         try:
             result = whisper.transcribe(
                 model_instance,
                 wav_path,
+                task=task,
                 language=language,
-                initial_prompt=prompt or None,
-                beam_size=beam_size,
-                best_of=best_of,
-                temperature=temperature,
+                initial_prompt=prompt,
+                beam_size=effective_beam_size,
+                best_of=effective_best_of,
+                temperature=effective_temperature,
                 condition_on_previous_text=condition_on_previous_text,
-                vad=vad,
+                vad=resolved_vad,
+                no_speech_threshold=no_speech_threshold,
+                detect_disfluencies=detect_disfluencies,
                 fp16=runtime_device.startswith("cuda"),
             )
         except TypeError:
@@ -168,19 +194,25 @@ class WhisperTimestampedService:
                 result = whisper.transcribe(
                     model_instance,
                     wav_path,
+                    task=task,
                     language=language,
-                    initial_prompt=prompt or None,
-                    beam_size=beam_size,
-                    best_of=best_of,
-                    temperature=temperature,
+                    initial_prompt=prompt,
+                    beam_size=effective_beam_size,
+                    best_of=effective_best_of,
+                    temperature=effective_temperature,
                     condition_on_previous_text=condition_on_previous_text,
+                    no_speech_threshold=no_speech_threshold,
+                    detect_disfluencies=detect_disfluencies,
                     fp16=runtime_device.startswith("cuda"),
                 )
             except TypeError:
                 result = whisper.transcribe(
                     model_instance,
                     wav_path,
+                    task=task,
                     language=language,
+                    initial_prompt=prompt,
+                    temperature=effective_temperature,
                     fp16=runtime_device.startswith("cuda"),
                 )
         if not isinstance(result, dict):
@@ -193,12 +225,17 @@ class WhisperTimestampedService:
         wav_path: str,
         model: str,
         language: str | None,
-        prompt: str,
+        prompt: str | None,
         beam_size: int,
         best_of: int,
-        temperature: float,
+        temperature: float | None,
         condition_on_previous_text: bool,
         vad: bool,
+        vad_mode: str | None,
+        task: str,
+        no_speech_threshold: float | None,
+        detect_disfluencies: bool,
+        accurate: bool,
     ) -> FileTranscriptionResponse:
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as request_file:
             request_path = Path(request_file.name)
@@ -217,6 +254,11 @@ class WhisperTimestampedService:
                     "temperature": temperature,
                     "condition_on_previous_text": condition_on_previous_text,
                     "vad": vad,
+                    "vad_mode": vad_mode,
+                    "task": task,
+                    "no_speech_threshold": no_speech_threshold,
+                    "detect_disfluencies": detect_disfluencies,
+                    "accurate": accurate,
                 }
             ),
             encoding="utf-8",
@@ -250,6 +292,30 @@ class WhisperTimestampedService:
         finally:
             request_path.unlink(missing_ok=True)
             response_path.unlink(missing_ok=True)
+
+    def _resolve_vad_mode(self, *, vad: bool, vad_mode: str | None) -> bool | str:
+        normalized = (vad_mode or "").strip().lower()
+        if not vad:
+            return False
+        if not normalized:
+            return "auditok"
+        if normalized.startswith("auditok"):
+            return normalized
+        raise TranscriptionError(
+            "Only auditok VAD is supported in offline mode. Use vad=true or vad_mode=auditok."
+        )
+
+    def _resolve_accuracy_options(
+        self,
+        *,
+        beam_size: int,
+        best_of: int,
+        temperature: float | None,
+        accurate: bool,
+    ) -> tuple[int, int, float | tuple[float, ...]]:
+        if not accurate:
+            return beam_size, best_of, (0.0 if temperature is None else temperature)
+        return max(beam_size, 5), max(best_of, 5), (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
 
     def _read_worker_error(self, response_path: Path, stderr: str | None) -> str:
         if response_path.exists():

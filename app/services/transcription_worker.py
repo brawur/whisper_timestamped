@@ -40,12 +40,19 @@ def main() -> int:
             wav_path=wav_path,
             model=str(payload["model"]),
             language=payload.get("language"),
-            prompt=str(payload.get("prompt") or ""),
+            prompt=payload.get("prompt"),
             beam_size=int(payload.get("beam_size", 5)),
             best_of=int(payload.get("best_of", 5)),
-            temperature=float(payload.get("temperature", 0.0)),
+            temperature=float(payload["temperature"]) if payload.get("temperature") is not None else None,
             condition_on_previous_text=bool(payload.get("condition_on_previous_text", True)),
             vad=bool(payload.get("vad", False)),
+            vad_mode=payload.get("vad_mode"),
+            task=str(payload.get("task") or "transcribe"),
+            no_speech_threshold=(
+                float(payload["no_speech_threshold"]) if payload.get("no_speech_threshold") is not None else None
+            ),
+            detect_disfluencies=bool(payload.get("detect_disfluencies", True)),
+            accurate=bool(payload.get("accurate", True)),
         )
         transcript = str(result.get("text") or "").strip()
         detected_language = result.get("language")
