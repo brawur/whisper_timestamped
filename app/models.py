@@ -21,6 +21,7 @@ class WhisperWord(BaseModel):
     text: str
     start: float
     end: float
+    confidence: float | None = None
 
 
 class WhisperSegment(BaseModel):
@@ -28,6 +29,11 @@ class WhisperSegment(BaseModel):
     start: float
     end: float
     text: str
+    temperature: float | None = None
+    avg_logprob: float | None = None
+    compression_ratio: float | None = None
+    no_speech_prob: float | None = None
+    confidence: float | None = None
     words: list[WhisperWord] = Field(default_factory=list)
 
 

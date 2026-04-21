@@ -440,13 +440,25 @@ class WhisperTimestampedService:
                 word_text = str(word_item.get("text") or word_item.get("word") or "").strip()
                 if word_start is None or word_end is None or not word_text:
                     continue
-                words.append(WhisperWord(text=word_text, start=word_start, end=word_end))
+                words.append(
+                    WhisperWord(
+                        text=word_text,
+                        start=word_start,
+                        end=word_end,
+                        confidence=self._coerce_float(word_item.get("confidence")),
+                    )
+                )
             segments.append(
                 WhisperSegment(
                     id=index,
                     start=start,
                     end=end,
                     text=text,
+                    temperature=self._coerce_float(item.get("temperature")),
+                    avg_logprob=self._coerce_float(item.get("avg_logprob")),
+                    compression_ratio=self._coerce_float(item.get("compression_ratio")),
+                    no_speech_prob=self._coerce_float(item.get("no_speech_prob")),
+                    confidence=self._coerce_float(item.get("confidence")),
                     words=words,
                 )
             )

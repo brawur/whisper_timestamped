@@ -58,9 +58,14 @@ class FakeService:
                     "start": 0.0,
                     "end": 1.25,
                     "text": "hallo welt",
+                    "temperature": 0.3,
+                    "avg_logprob": -0.085798696,
+                    "compression_ratio": 1.4421768,
+                    "no_speech_prob": 1.1901208e-11,
+                    "confidence": 0.979,
                     "words": [
-                        {"text": "hallo", "start": 0.0, "end": 0.6},
-                        {"text": "welt", "start": 0.7, "end": 1.25},
+                        {"text": "hallo", "start": 0.0, "end": 0.6, "confidence": 0.991},
+                        {"text": "welt", "start": 0.7, "end": 1.25, "confidence": 0.976},
                     ],
                 }
             ],
@@ -121,9 +126,14 @@ class FakeWorkerService(transcription.WhisperTimestampedService):
                     "start": 0.0,
                     "end": 1.25,
                     "text": "hallo welt",
+                    "temperature": 0.3,
+                    "avg_logprob": -0.085798696,
+                    "compression_ratio": 1.4421768,
+                    "no_speech_prob": 1.1901208e-11,
+                    "confidence": 0.979,
                     "words": [
-                        {"text": "hallo", "start": 0.0, "end": 0.6},
-                        {"text": "welt", "start": 0.7, "end": 1.25},
+                        {"text": "hallo", "start": 0.0, "end": 0.6, "confidence": 0.991},
+                        {"text": "welt", "start": 0.7, "end": 1.25, "confidence": 0.976},
                     ],
                 }
             ],
@@ -196,7 +206,13 @@ def test_file_transcription_response() -> None:
             assert body["duration_seconds"] == 1.25
             assert body["model"] == "small"
             assert body["processing_ms"] >= 0
+            assert body["segments"][0]["temperature"] == 0.3
+            assert body["segments"][0]["avg_logprob"] == -0.085798696
+            assert body["segments"][0]["compression_ratio"] == 1.4421768
+            assert body["segments"][0]["no_speech_prob"] == 1.1901208e-11
+            assert body["segments"][0]["confidence"] == 0.979
             assert body["segments"][0]["words"][0]["text"] == "hallo"
+            assert body["segments"][0]["words"][0]["confidence"] == 0.991
         transcription._service = None
 
     asyncio.run(run())

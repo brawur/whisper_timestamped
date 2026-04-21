@@ -47,6 +47,18 @@ Cancellation note:
 - `POST /transcribe/cancel/{request_id}` terminates the active subprocess and returns `204`
 - cancelled requests return `499` with `Transcription cancelled.`
 
+Whisper-specific output note:
+
+- the service preserves Whisper-only metadata when it is available in the upstream result
+- per segment this includes:
+  - `temperature`
+  - `avg_logprob`
+  - `compression_ratio`
+  - `no_speech_prob`
+  - `confidence`
+- per word this includes:
+  - `confidence`
+
 The service is meant to be called by the Parakeet gateway over HTTP.
 
 ## Run locally

@@ -11,6 +11,13 @@ The format is based on Keep a Changelog.
 - cancellable worker execution for request-scoped transcription subprocesses
 - `POST /transcribe/cancel/{request_id}` to terminate a running transcription subprocess
 - API tests verifying that cancellation really stops the spawned worker process
+- restored Whisper metadata fields in the JSON response:
+  - segment `temperature`
+  - segment `avg_logprob`
+  - segment `compression_ratio`
+  - segment `no_speech_prob`
+  - segment `confidence`
+  - word `confidence`
 
 ### Changed
 
