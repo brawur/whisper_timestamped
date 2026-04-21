@@ -15,6 +15,7 @@ Implemented:
 - `GET /health`
 - `GET /metadata`
 - `POST /transcribe/file`
+- `POST /transcribe/cancel/{request_id}`
 
 `POST /transcribe/file` accepts `multipart/form-data` fields:
 
@@ -38,6 +39,13 @@ Body-first API note:
 - Whisper options are expected in the multipart body, not in the query string
 - existing query parameters are still accepted as a temporary compatibility fallback
 - `initial_prompt`, `temperature`, and `no_speech_threshold` are optional and are only forwarded when explicitly provided
+
+Cancellation note:
+
+- callers can attach `X-Transcription-Request-ID` to `POST /transcribe/file`
+- the worker registers the spawned subprocess under that request ID
+- `POST /transcribe/cancel/{request_id}` terminates the active subprocess and returns `204`
+- cancelled requests return `499` with `Transcription cancelled.`
 
 The service is meant to be called by the Parakeet gateway over HTTP.
 
