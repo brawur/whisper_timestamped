@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -10,7 +11,7 @@ import app.services.transcription as transcription
 
 
 class FakeService:
-    def transcribe_file(
+    async def transcribe_file(
         self,
         *,
         media_bytes: bytes,
@@ -28,6 +29,7 @@ class FakeService:
         no_speech_threshold: float | None,
         detect_disfluencies: bool,
         accurate: bool,
+        request_id: str | None = None,
     ):
         assert media_bytes == b"RIFFfake"
         assert source_name == "sample.wav"
@@ -74,7 +76,7 @@ class FakeWorkerService(transcription.WhisperTimestampedService):
         path.write_bytes(b"fake-wav")
         return str(path)
 
-    def _run_worker_process(
+    async def _run_worker_process(
         self,
         *,
         wav_path: str,
@@ -91,6 +93,7 @@ class FakeWorkerService(transcription.WhisperTimestampedService):
         no_speech_threshold: float | None,
         detect_disfluencies: bool,
         accurate: bool,
+        request_id: str | None = None,
     ) -> transcription.FileTranscriptionResponse:
         assert Path(wav_path).exists()
         assert model == "small"
@@ -207,7 +210,7 @@ def test_file_transcription_uses_auditok_when_vad_enabled() -> None:
             path.write_bytes(b"fake-wav")
             return str(path)
 
-        def _run_worker_process(
+        async def _run_worker_process(
             self,
             *,
             wav_path: str,
@@ -223,8 +226,9 @@ def test_file_transcription_uses_auditok_when_vad_enabled() -> None:
             task: str,
             no_speech_threshold: float | None,
             detect_disfluencies: bool,
-            accurate: bool,
-        ) -> transcription.FileTranscriptionResponse:
+        accurate: bool,
+        request_id: str | None = None,
+    ) -> transcription.FileTranscriptionResponse:
             assert vad is True
             assert vad_mode is None
             assert task == "transcribe"
@@ -256,6 +260,39 @@ def test_file_transcription_uses_auditok_when_vad_enabled() -> None:
                 },
             )
             assert response.status_code == 200
+        transcription._service = None
+
+    asyncio.run(run())
+
+
+def test_cancel_endpoint_stops_running_worker_process() -> None:
+    class CancelTestService(transcription.WhisperTimestampedService):
+        def _normalize_media_to_wav(self, media_bytes: bytes, *, source_name: str | None) -> str:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as output_file:
+                path = Path(output_file.name)
+            path.write_bytes(b"fake-wav")
+            return str(path)
+
+        def _worker_command(self, request_path: Path, response_path: Path) -> list[str]:
+            return [sys.executable, "-c", "import time; time.sleep(60)"]
+
+    async def run() -> None:
+        service = CancelTestService()
+        transcription._service = service
+        async with await _get_client() as client:
+            post_task = asyncio.create_task(
+                client.post(
+                    "/transcribe/file",
+                    headers={"X-Transcription-Request-ID": "req-1"},
+                    files={"file": ("sample.wav", b"RIFFfake", "audio/wav")},
+                )
+            )
+            await asyncio.sleep(0.2)
+            cancel_response = await client.post("/transcribe/cancel/req-1")
+            assert cancel_response.status_code == 204
+            response = await post_task
+            assert response.status_code == 499
+            assert response.json()["detail"] == "Transcription cancelled."
         transcription._service = None
 
     asyncio.run(run())

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 
 from app.models import FileTranscriptionResponse, HealthResponse, MetadataResponse
 from app.services.transcription import TranscriptionError, WhisperTimestampedService, get_service
@@ -110,8 +110,9 @@ async def transcribe_file(
     payload = await file.read()
     if not payload:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    request_id = request.headers.get("X-Transcription-Request-ID")
     try:
-        return service.transcribe_file(
+        return await service.transcribe_file(
             media_bytes=payload,
             source_name=file.filename,
             model=model,
@@ -127,6 +128,16 @@ async def transcribe_file(
             no_speech_threshold=no_speech_threshold,
             detect_disfluencies=True if detect_disfluencies is None else detect_disfluencies,
             accurate=True if accurate is None else accurate,
+            request_id=request_id,
         )
     except TranscriptionError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.post("/transcribe/cancel/{request_id}", status_code=204)
+async def cancel_transcription(
+    request_id: str,
+    service: WhisperTimestampedService = Depends(get_service),
+) -> Response:
+    await service.cancel_request(request_id)
+    return Response(status_code=204)

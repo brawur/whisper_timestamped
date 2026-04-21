@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import os
@@ -15,14 +16,18 @@ from app.models import FileTranscriptionResponse, WhisperSegment, WhisperWord
 
 
 class TranscriptionError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, status_code: int = 502) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class WhisperTimestampedService:
     def __init__(self) -> None:
         self._models: dict[tuple[str, str], Any] = {}
+        self._active_processes: dict[str, asyncio.subprocess.Process] = {}
+        self._active_process_lock = asyncio.Lock()
 
-    def transcribe_file(
+    async def transcribe_file(
         self,
         *,
         media_bytes: bytes,
@@ -40,12 +45,13 @@ class WhisperTimestampedService:
         no_speech_threshold: float | None,
         detect_disfluencies: bool,
         accurate: bool,
+        request_id: str | None = None,
     ) -> FileTranscriptionResponse:
         started = time.monotonic()
         self._resolve_vad_mode(vad=vad, vad_mode=vad_mode)
         wav_path = self._normalize_media_to_wav(media_bytes, source_name=source_name)
         try:
-            worker_response = self._run_worker_process(
+            worker_response = await self._run_worker_process(
                 wav_path=wav_path,
                 model=model,
                 language=language,
@@ -60,6 +66,7 @@ class WhisperTimestampedService:
                 no_speech_threshold=no_speech_threshold,
                 detect_disfluencies=detect_disfluencies,
                 accurate=accurate,
+                request_id=request_id,
             )
         finally:
             Path(wav_path).unlink(missing_ok=True)
@@ -219,7 +226,30 @@ class WhisperTimestampedService:
             raise TranscriptionError("Whisper returned an unsupported response type.")
         return result
 
-    def _run_worker_process(
+    async def cancel_request(self, request_id: str) -> None:
+        async with self._active_process_lock:
+            process = self._active_processes.get(request_id)
+        if process is None or process.returncode is not None:
+            return
+        process.terminate()
+        try:
+            await asyncio.wait_for(process.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+
+    def _worker_command(self, request_path: Path, response_path: Path) -> list[str]:
+        return [
+            sys.executable,
+            "-m",
+            "app.services.transcription_worker",
+            "--request",
+            str(request_path),
+            "--response",
+            str(response_path),
+        ]
+
+    async def _run_worker_process(
         self,
         *,
         wav_path: str,
@@ -236,6 +266,7 @@ class WhisperTimestampedService:
         no_speech_threshold: float | None,
         detect_disfluencies: bool,
         accurate: bool,
+        request_id: str | None,
     ) -> FileTranscriptionResponse:
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as request_file:
             request_path = Path(request_file.name)
@@ -265,22 +296,20 @@ class WhisperTimestampedService:
         )
 
         try:
-            completed = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "app.services.transcription_worker",
-                    "--request",
-                    str(request_path),
-                    "--response",
-                    str(response_path),
-                ],
-                check=False,
-                capture_output=True,
-                text=True,
+            process = await asyncio.create_subprocess_exec(
+                *self._worker_command(request_path, response_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-            if completed.returncode != 0:
-                raise TranscriptionError(self._read_worker_error(response_path, completed.stderr))
+            if request_id:
+                async with self._active_process_lock:
+                    self._active_processes[request_id] = process
+            _stdout, stderr = await process.communicate()
+            stderr_text = stderr.decode("utf-8", errors="replace") if stderr else ""
+            if process.returncode != 0:
+                if process.returncode < 0:
+                    raise TranscriptionError("Transcription cancelled.", status_code=499)
+                raise TranscriptionError(self._read_worker_error(response_path, stderr_text))
 
             if not response_path.exists():
                 raise TranscriptionError("Whisper worker did not produce a response file.")
@@ -290,6 +319,9 @@ class WhisperTimestampedService:
                 raise TranscriptionError("Whisper worker returned invalid JSON.") from exc
             return FileTranscriptionResponse.model_validate(payload)
         finally:
+            if request_id:
+                async with self._active_process_lock:
+                    self._active_processes.pop(request_id, None)
             request_path.unlink(missing_ok=True)
             response_path.unlink(missing_ok=True)
 
