@@ -44,3 +44,27 @@ class FileTranscriptionResponse(BaseModel):
     model: str
     processing_ms: int
     segments: list[WhisperSegment] = Field(default_factory=list)
+
+
+class HostCPUInfo(BaseModel):
+    usage: float
+
+
+class HostMemoryInfo(BaseModel):
+    usage: float
+
+
+class HostGPUInfo(BaseModel):
+    available: bool
+    name: str | None = None
+    gpu_utilization: float | None = None
+    memory_utilization: float | None = None
+    used_memory: int | None = None
+    total_memory: int | None = None
+
+
+class RuntimeMetricsResponse(BaseModel):
+    timestamp: int
+    cpu: HostCPUInfo
+    memory: HostMemoryInfo
+    gpu: HostGPUInfo

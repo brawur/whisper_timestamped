@@ -14,6 +14,7 @@ Implemented:
 
 - `GET /health`
 - `GET /metadata`
+- `GET /metrics/runtime`
 - `POST /transcribe/file`
 - `POST /transcribe/cancel/{request_id}`
 
@@ -60,6 +61,11 @@ Whisper-specific output note:
   - `confidence`
 
 The service is meant to be called by the Parakeet gateway over HTTP.
+
+Runtime metrics note:
+
+- `GET /metrics/runtime` exposes CPU/RAM/GPU metrics from the worker runtime
+- the gateway uses this internal endpoint for MCC multi-job metrics while Whisper ASR steps are active
 
 ## Run locally
 

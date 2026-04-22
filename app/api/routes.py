@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 
-from app.models import FileTranscriptionResponse, HealthResponse, MetadataResponse
+from app.models import FileTranscriptionResponse, HealthResponse, MetadataResponse, RuntimeMetricsResponse
+from app.services.host_metrics import get_host_metrics_collector
 from app.services.transcription import TranscriptionError, WhisperTimestampedService, get_service
 
 router = APIRouter()
@@ -85,6 +86,11 @@ async def metadata() -> MetadataResponse:
             "accurate",
         ],
     )
+
+
+@router.get("/metrics/runtime", response_model=RuntimeMetricsResponse)
+async def runtime_metrics() -> RuntimeMetricsResponse:
+    return get_host_metrics_collector().collect()
 
 
 @router.post("/transcribe/file", response_model=FileTranscriptionResponse)

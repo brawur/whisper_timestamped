@@ -7,6 +7,7 @@ from pathlib import Path
 import httpx
 
 from app.main import app
+import app.api.routes as routes
 import app.services.transcription as transcription
 
 
@@ -169,6 +170,31 @@ def test_metadata() -> None:
             assert body["supports_speaker_diarization"] is False
             assert body["mode"] == "local_model"
             assert "beam_size" in body["supported_parameters"]
+
+    asyncio.run(run())
+
+
+def test_runtime_metrics_endpoint() -> None:
+    class FakeCollector:
+        def collect(self):
+            return {
+                "timestamp": 1710000000,
+                "cpu": {"usage": 12.3},
+                "memory": {"usage": 45.6},
+                "gpu": {"available": False},
+            }
+
+    async def run() -> None:
+        original = routes.get_host_metrics_collector
+        routes.get_host_metrics_collector = lambda: FakeCollector()  # type: ignore[assignment]
+        try:
+            async with await _get_client() as client:
+                response = await client.get("/metrics/runtime")
+                assert response.status_code == 200
+                assert response.json()["cpu"]["usage"] == 12.3
+                assert response.json()["gpu"]["available"] is False
+        finally:
+            routes.get_host_metrics_collector = original  # type: ignore[assignment]
 
     asyncio.run(run())
 
