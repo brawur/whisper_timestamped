@@ -1,8 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 
-from app.models import FileTranscriptionResponse, HealthResponse, MetadataResponse, RuntimeMetricsResponse
+from app.models import (
+    FileTranscriptionResponse,
+    HealthResponse,
+    LidProbeResponse,
+    MetadataResponse,
+    RuntimeMetricsResponse,
+)
 from app.services.host_metrics import get_host_metrics_collector
 from app.services.transcription import TranscriptionError, WhisperTimestampedService, get_service
 
@@ -84,6 +90,7 @@ async def metadata() -> MetadataResponse:
             "no_speech_threshold",
             "detect_disfluencies",
             "accurate",
+            "probe_lid",
         ],
     )
 
@@ -96,7 +103,8 @@ async def runtime_metrics() -> RuntimeMetricsResponse:
 @router.post("/transcribe/file", response_model=FileTranscriptionResponse)
 async def transcribe_file(
     request: Request,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
+    shared_path: str | None = Form(None),
     service: WhisperTimestampedService = Depends(get_service),
 ) -> FileTranscriptionResponse:
     form = dict(await request.form())
@@ -113,14 +121,20 @@ async def transcribe_file(
     no_speech_threshold = _pick_float(request, form, "no_speech_threshold")
     detect_disfluencies = _pick_bool(request, form, "detect_disfluencies")
     accurate = _pick_bool(request, form, "accurate")
-    payload = await file.read()
-    if not payload:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    payload = None
+    source_name = None
+    if file is not None:
+        payload = await file.read()
+        if not payload:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        source_name = file.filename
+    elif not shared_path:
+        raise HTTPException(status_code=400, detail="Either 'file' or 'shared_path' is required.")
     request_id = request.headers.get("X-Transcription-Request-ID")
     try:
         return await service.transcribe_file(
             media_bytes=payload,
-            source_name=file.filename,
+            source_name=source_name,
             model=model,
             language=language,
             prompt=prompt,
@@ -135,6 +149,48 @@ async def transcribe_file(
             detect_disfluencies=True if detect_disfluencies is None else detect_disfluencies,
             accurate=True if accurate is None else accurate,
             request_id=request_id,
+            shared_path=shared_path,
+        )
+    except TranscriptionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.post("/probe/lid", response_model=LidProbeResponse)
+async def probe_lid(
+    request: Request,
+    file: UploadFile | None = File(None),
+    shared_path: str | None = Form(None),
+    service: WhisperTimestampedService = Depends(get_service),
+) -> LidProbeResponse:
+    form = dict(await request.form())
+    offset_seconds = _pick_float(request, form, "offset_seconds")
+    if offset_seconds is None:
+        offset_seconds = 0.0
+    duration_seconds = _pick_float(request, form, "duration_seconds")
+    if duration_seconds is None:
+        duration_seconds = 30.0
+    model = _pick_text(request, form, "model")
+    top_k = _pick_int(request, form, "top_k") or 3
+
+    payload: bytes | None = None
+    source_name: str | None = None
+    if file is not None:
+        payload = await file.read()
+        if not payload:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        source_name = file.filename
+    elif not shared_path:
+        raise HTTPException(status_code=400, detail="Either 'file' or 'shared_path' is required.")
+
+    try:
+        return await service.probe_lid(
+            media_bytes=payload,
+            source_name=source_name,
+            shared_path=shared_path,
+            offset_seconds=offset_seconds,
+            duration_seconds=duration_seconds,
+            model=model,
+            top_k=top_k,
         )
     except TranscriptionError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

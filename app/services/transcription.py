@@ -12,7 +12,12 @@ import wave
 from pathlib import Path
 from typing import Any
 
-from app.models import FileTranscriptionResponse, WhisperSegment, WhisperWord
+from app.models import (
+    FileTranscriptionResponse,
+    LidProbeResponse,
+    WhisperSegment,
+    WhisperWord,
+)
 
 
 class TranscriptionError(RuntimeError):
@@ -30,7 +35,7 @@ class WhisperTimestampedService:
     async def transcribe_file(
         self,
         *,
-        media_bytes: bytes,
+        media_bytes: bytes | None,
         source_name: str | None,
         model: str,
         language: str | None,
@@ -46,10 +51,11 @@ class WhisperTimestampedService:
         detect_disfluencies: bool,
         accurate: bool,
         request_id: str | None = None,
+        shared_path: str | None = None,
     ) -> FileTranscriptionResponse:
         started = time.monotonic()
         self._resolve_vad_mode(vad=vad, vad_mode=vad_mode)
-        wav_path = self._normalize_media_to_wav(media_bytes, source_name=source_name)
+        wav_path, owns_wav_path = self._resolve_wav_path(media_bytes=media_bytes, source_name=source_name, shared_path=shared_path)
         try:
             worker_response = await self._run_worker_process(
                 wav_path=wav_path,
@@ -69,7 +75,8 @@ class WhisperTimestampedService:
                 request_id=request_id,
             )
         finally:
-            Path(wav_path).unlink(missing_ok=True)
+            if owns_wav_path:
+                Path(wav_path).unlink(missing_ok=True)
 
         return worker_response.model_copy(
             update={
@@ -77,6 +84,31 @@ class WhisperTimestampedService:
                 "model": model,
             }
         )
+
+    def _resolve_wav_path(
+        self, *, media_bytes: bytes | None, source_name: str | None, shared_path: str | None
+    ) -> tuple[str, bool]:
+        if shared_path:
+            return self._validate_shared_wav_path(shared_path), False
+        if media_bytes is None:
+            raise TranscriptionError("Either uploaded media or shared_path is required.", status_code=400)
+        return self._normalize_media_to_wav(media_bytes, source_name=source_name), True
+
+    def _validate_shared_wav_path(self, shared_path: str) -> str:
+        root = Path(os.environ.get("SHARED_JOBS_ROOT", "/tmp/shared/jobs")).resolve()
+        try:
+            resolved = Path(shared_path).resolve(strict=True)
+        except FileNotFoundError as exc:
+            raise TranscriptionError("Shared audio file was not found.", status_code=404) from exc
+        try:
+            resolved.relative_to(root)
+        except ValueError as exc:
+            raise TranscriptionError("shared_path must stay within the configured shared jobs root.", status_code=400) from exc
+        if not resolved.is_file():
+            raise TranscriptionError("Shared audio path must reference a file.", status_code=400)
+        if not self._is_normalized_wav(resolved.read_bytes()):
+            raise TranscriptionError("shared_path must reference a normalized mono 16 kHz WAV file.", status_code=400)
+        return str(resolved)
 
     def _normalize_media_to_wav(self, media_bytes: bytes, *, source_name: str | None) -> str:
         if self._is_normalized_wav(media_bytes):
@@ -225,6 +257,108 @@ class WhisperTimestampedService:
         if not isinstance(result, dict):
             raise TranscriptionError("Whisper returned an unsupported response type.")
         return result
+
+    async def probe_lid(
+        self,
+        *,
+        media_bytes: bytes | None,
+        source_name: str | None,
+        shared_path: str | None,
+        offset_seconds: float,
+        duration_seconds: float,
+        model: str | None,
+        top_k: int,
+    ) -> LidProbeResponse:
+        if duration_seconds <= 0:
+            raise TranscriptionError("duration_seconds must be positive.", status_code=400)
+        if offset_seconds < 0:
+            raise TranscriptionError("offset_seconds must be non-negative.", status_code=400)
+        capped_duration = min(duration_seconds, 60.0)
+        resolved_model = (model or os.environ.get("WHISPER_LID_MODEL", "tiny")).strip() or "tiny"
+        capped_top_k = max(1, min(int(top_k), 99))
+
+        wav_path, owns_wav_path = self._resolve_wav_path(
+            media_bytes=media_bytes, source_name=source_name, shared_path=shared_path
+        )
+        try:
+            total_duration = self._duration_seconds(wav_path)
+            if offset_seconds >= total_duration:
+                raise TranscriptionError(
+                    f"offset_seconds ({offset_seconds}) is past the end of the audio "
+                    f"({total_duration:.3f}s).",
+                    status_code=400,
+                )
+            return await self._run_lid_worker_process(
+                wav_path=wav_path,
+                model=resolved_model,
+                offset_seconds=offset_seconds,
+                duration_seconds=capped_duration,
+                top_k=capped_top_k,
+            )
+        finally:
+            if owns_wav_path:
+                Path(wav_path).unlink(missing_ok=True)
+
+    def _lid_worker_command(self, request_path: Path, response_path: Path) -> list[str]:
+        return [
+            sys.executable,
+            "-m",
+            "app.services.lid_probe_worker",
+            "--request",
+            str(request_path),
+            "--response",
+            str(response_path),
+        ]
+
+    async def _run_lid_worker_process(
+        self,
+        *,
+        wav_path: str,
+        model: str,
+        offset_seconds: float,
+        duration_seconds: float,
+        top_k: int,
+    ) -> LidProbeResponse:
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as request_file:
+            request_path = Path(request_file.name)
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as response_file:
+            response_path = Path(response_file.name)
+
+        request_path.write_text(
+            json.dumps(
+                {
+                    "wav_path": wav_path,
+                    "model": model,
+                    "offset_seconds": offset_seconds,
+                    "duration_seconds": duration_seconds,
+                    "top_k": top_k,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *self._lid_worker_command(request_path, response_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _stdout, stderr = await process.communicate()
+            stderr_text = stderr.decode("utf-8", errors="replace") if stderr else ""
+            if process.returncode != 0:
+                raise TranscriptionError(self._read_worker_error(response_path, stderr_text))
+            if not response_path.exists():
+                raise TranscriptionError("LID worker did not produce a response file.")
+            try:
+                payload = json.loads(response_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                raise TranscriptionError("LID worker returned invalid JSON.") from exc
+            if isinstance(payload, dict) and "error" in payload:
+                raise TranscriptionError(str(payload["error"]))
+            return LidProbeResponse.model_validate(payload)
+        finally:
+            request_path.unlink(missing_ok=True)
+            response_path.unlink(missing_ok=True)
 
     async def cancel_request(self, request_id: str) -> None:
         async with self._active_process_lock:

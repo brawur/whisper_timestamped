@@ -46,6 +46,21 @@ class FileTranscriptionResponse(BaseModel):
     segments: list[WhisperSegment] = Field(default_factory=list)
 
 
+class LidCandidate(BaseModel):
+    language: str
+    confidence: float
+
+
+class LidProbeResponse(BaseModel):
+    language: str
+    confidence: float
+    candidates: list[LidCandidate] = Field(default_factory=list)
+    model: str
+    sample_offset_seconds: float
+    sample_duration_seconds: float
+    processing_ms: int
+
+
 class HostCPUInfo(BaseModel):
     usage: float
 
