@@ -22,3 +22,4 @@ The format is based on Keep a Changelog.
 ### Changed
 
 - `POST /transcribe/file` now accepts `X-Transcription-Request-ID` and maps cancelled subprocesses to HTTP `499`
+- `POST /transcribe/file` now also accepts `shared_path` for pre-normalized WAV files from the local shared jobs volume

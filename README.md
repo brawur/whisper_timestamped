@@ -40,6 +40,7 @@ Body-first API note:
 - Whisper options are expected in the multipart body, not in the query string
 - existing query parameters are still accepted as a temporary compatibility fallback
 - `initial_prompt`, `temperature`, and `no_speech_threshold` are optional and are only forwarded when explicitly provided
+- local gateway deployments can also send `shared_path` instead of `file`, as long as the path points to a normalized mono `16 kHz` WAV under the configured shared jobs root
 
 Cancellation note:
 

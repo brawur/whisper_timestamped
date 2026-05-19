@@ -1,7 +1,9 @@
 import asyncio
+import io
 import os
 import sys
 import tempfile
+import wave
 from pathlib import Path
 
 import httpx
@@ -146,6 +148,16 @@ async def _get_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=transport, base_url="http://testserver")
 
 
+def _normalized_wav_bytes() -> bytes:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(16_000)
+        wav_file.writeframes(b"\x00\x01" * 100)
+    return buffer.getvalue()
+
+
 def test_health() -> None:
     async def run() -> None:
         async with await _get_client() as client:
@@ -240,6 +252,39 @@ def test_file_transcription_response() -> None:
             assert body["segments"][0]["words"][0]["text"] == "hallo"
             assert body["segments"][0]["words"][0]["confidence"] == 0.991
         transcription._service = None
+
+    asyncio.run(run())
+
+
+def test_file_transcription_accepts_shared_path() -> None:
+    async def run() -> None:
+        original_shared_jobs_root = os.environ.get("SHARED_JOBS_ROOT")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            shared_path = shared_root / "job-1" / "normalized.wav"
+            shared_path.parent.mkdir(parents=True, exist_ok=True)
+            shared_path.write_bytes(_normalized_wav_bytes())
+            os.environ["SHARED_JOBS_ROOT"] = str(shared_root)
+            transcription._service = FakeWorkerService()
+            try:
+                async with await _get_client() as client:
+                    response = await client.post(
+                        "/transcribe/file",
+                        data={
+                            "shared_path": str(shared_path),
+                            "model": "small",
+                            "language": "de",
+                            "beam_size": "3",
+                        },
+                    )
+                    assert response.status_code == 200
+                    assert response.json()["text"] == "hallo welt"
+            finally:
+                transcription._service = None
+                if original_shared_jobs_root is None:
+                    os.environ.pop("SHARED_JOBS_ROOT", None)
+                else:
+                    os.environ["SHARED_JOBS_ROOT"] = original_shared_jobs_root
 
     asyncio.run(run())
 
