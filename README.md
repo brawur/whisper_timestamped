@@ -6,7 +6,8 @@ This repository is intentionally separate from the Parakeet gateway so that:
 
 - dependencies remain isolated
 - container images remain isolated
-- licensing remains easier to reason about
+- licensing remains easier to reason about (this service is **AGPL-3.0**; the
+  other services in the wider stack remain MIT — see "License" below)
 
 ## API
 
@@ -15,6 +16,7 @@ Implemented:
 - `GET /health`
 - `GET /metadata`
 - `GET /metrics/runtime`
+- `GET /license`
 - `POST /transcribe/file`
 - `POST /transcribe/cancel/{request_id}`
 
@@ -212,3 +214,41 @@ docker compose \
   -f docker-compose.runtime-patch.yml \
   up --build
 ```
+
+## License
+
+This service is licensed under the **GNU Affero General Public License v3.0
+or later (AGPL-3.0-or-later)**. See [LICENSE.md](LICENSE.md) for the full
+license text and [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) for the
+licenses of bundled and linked dependencies.
+
+The AGPL was chosen because this service imports the
+[`whisper-timestamped`](https://github.com/linto-ai/whisper-timestamped)
+library, which is itself published under AGPL-3.0. Since the library is
+loaded into this service's process at runtime, the combined work falls under
+AGPL-3.0.
+
+### §13 Compliance (Network Use)
+
+Section 13 of the AGPL requires that users who interact with this service
+over a network can obtain the complete corresponding source code of the
+version that is actually running. To make this easy:
+
+- The `GET /license` endpoint returns the license metadata and a
+  `source_url` pointing to the deployed source.
+- Operators **must** set the environment variable `WHISPER_TS_SOURCE_URL` to
+  a publicly reachable URL where the exact source code of the running
+  deployment can be obtained (e.g. a GitHub tag, a git tarball, or a release
+  page). The default value is a placeholder and is **not compliant**.
+- Any modifications made to this service or to `whisper-timestamped` while
+  operating it must be published under AGPL-3.0.
+
+### Effect on the Wider Stack
+
+The other services in the wider transcription stack (`gateway`,
+`parakeet_worker`, `diarization_worker`, `summary_worker`, `gatetop`) remain
+under the MIT License. They communicate with this service strictly over HTTP
+between separate processes / containers, which is treated as "mere
+aggregation" under the (A)GPL. Do **not** import `whisper-timestamped` (or
+copy code from it) into any of those repositories — that would break the
+process boundary and pull them under AGPL.

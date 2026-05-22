@@ -83,3 +83,18 @@ class RuntimeMetricsResponse(BaseModel):
     cpu: HostCPUInfo
     memory: HostMemoryInfo
     gpu: HostGPUInfo
+
+
+class LicenseComponent(BaseModel):
+    name: str
+    license: str
+    source_url: str
+
+
+class LicenseResponse(BaseModel):
+    service: str
+    license: str
+    license_url: str
+    source_url: str
+    notice: str
+    components: list[LicenseComponent] = Field(default_factory=list)

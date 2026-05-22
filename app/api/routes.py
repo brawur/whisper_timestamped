@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 
 from app.models import (
     FileTranscriptionResponse,
     HealthResponse,
+    LicenseComponent,
+    LicenseResponse,
     LidProbeResponse,
     MetadataResponse,
     RuntimeMetricsResponse,
@@ -98,6 +102,39 @@ async def metadata() -> MetadataResponse:
 @router.get("/metrics/runtime", response_model=RuntimeMetricsResponse)
 async def runtime_metrics() -> RuntimeMetricsResponse:
     return get_host_metrics_collector().collect()
+
+
+@router.get("/license", response_model=LicenseResponse)
+async def license_info() -> LicenseResponse:
+    source_url = os.environ.get(
+        "WHISPER_TS_SOURCE_URL",
+        "Source URL not configured. Set WHISPER_TS_SOURCE_URL to the location of the deployed source.",
+    )
+    return LicenseResponse(
+        service="whisper_timestamped",
+        license="AGPL-3.0-or-later",
+        license_url="https://www.gnu.org/licenses/agpl-3.0.html",
+        source_url=source_url,
+        notice=(
+            "This service is licensed under the GNU Affero General Public License v3.0 "
+            "(AGPL-3.0-or-later). Under section 13, users who interact with it over a "
+            "network are entitled to receive the complete corresponding source code of "
+            "the running version. See source_url. Modifications made by the operator "
+            "must be published under AGPL-3.0 as well."
+        ),
+        components=[
+            LicenseComponent(
+                name="whisper-timestamped",
+                license="AGPL-3.0",
+                source_url="https://github.com/linto-ai/whisper-timestamped",
+            ),
+            LicenseComponent(
+                name="openai-whisper",
+                license="MIT",
+                source_url="https://github.com/openai/whisper",
+            ),
+        ],
+    )
 
 
 @router.post("/transcribe/file", response_model=FileTranscriptionResponse)
