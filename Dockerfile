@@ -22,6 +22,10 @@ COPY docker-overrides /app/docker-overrides
 RUN pip install --upgrade pip setuptools wheel
 RUN pip install --retries 10 --default-timeout 300 ".[local]"
 
+RUN pip install pip-licenses \
+    && pip-licenses --format=json --with-urls --ignore-packages pip-licenses \
+       --output-file=/app/THIRD_PARTY_LICENSES.full.json
+
 # If somebody drops a custom tiktoken_ext/openai_public.py into docker-overrides
 # (e.g. for downstream patches), copy it over the pip-installed file. No-op when
 # the directory is empty - that's the supported default for offline operation,
