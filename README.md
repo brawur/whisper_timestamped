@@ -137,7 +137,7 @@ With this mount, existing host models like `~/.cache/whisper/large-v1.pt` or `~/
 If you have a patched `tiktoken_ext/openai_public.py` for fully offline execution, you can bake it directly into the image build:
 
 1. copy your patched file to:
-   `whisper_timestamped/docker-overrides/tiktoken_ext/openai_public.py`
+   `whisper_timestamped_worker/docker-overrides/tiktoken_ext/openai_public.py`
 2. build the image again:
 
 ```bash
