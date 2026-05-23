@@ -108,7 +108,7 @@ async def runtime_metrics() -> RuntimeMetricsResponse:
 async def license_info() -> LicenseResponse:
     source_url = os.environ.get(
         "WHISPER_TS_SOURCE_URL",
-        "Source URL not configured. Set WHISPER_TS_SOURCE_URL to the location of the deployed source.",
+        "https://github.com/brawur/whisper_timestamped",
     )
     return LicenseResponse(
         service="whisper_timestamped",

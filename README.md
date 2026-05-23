@@ -236,12 +236,17 @@ version that is actually running. To make this easy:
 
 - The `GET /license` endpoint returns the license metadata and a
   `source_url` pointing to the deployed source.
-- Operators **must** set the environment variable `WHISPER_TS_SOURCE_URL` to
-  a publicly reachable URL where the exact source code of the running
-  deployment can be obtained (e.g. a GitHub tag, a git tarball, or a release
-  page). The default value is a placeholder and is **not compliant**.
+- The default `source_url` is
+  [`https://github.com/brawur/whisper_timestamped`](https://github.com/brawur/whisper_timestamped),
+  the public mirror of this repository.
+- Operators **should** override `WHISPER_TS_SOURCE_URL` to point at the
+  exact tag (or commit) matching the deployed version, e.g.
+  `https://github.com/brawur/whisper_timestamped/tree/v0.1.0`. Pinning to a
+  tag is the cleanest way to ensure §13's "Corresponding Source" matches
+  the running build.
 - Any modifications made to this service or to `whisper-timestamped` while
-  operating it must be published under AGPL-3.0.
+  operating it must be published under AGPL-3.0 and reflected in the public
+  mirror.
 
 ### Effect on the Wider Stack
 
