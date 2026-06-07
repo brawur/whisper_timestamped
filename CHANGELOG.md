@@ -6,6 +6,8 @@ The format is based on Keep a Changelog.
 
 ## [Unreleased]
 
+## [2.0.7] - 2026-06-07
+
 ### Added
 
 - cancellable worker execution for request-scoped transcription subprocesses
