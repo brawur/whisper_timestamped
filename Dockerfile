@@ -24,6 +24,7 @@ RUN pip install --retries 10 --default-timeout 300 ".[local]"
 
 RUN pip install pip-licenses \
     && pip-licenses --format=json --with-urls --ignore-packages pip-licenses \
+       --with-license-file --with-notice-file --no-license-path \
        --output-file=/app/THIRD_PARTY_LICENSES.full.json
 
 # If somebody drops a custom tiktoken_ext/openai_public.py into docker-overrides
