@@ -82,7 +82,9 @@ def main() -> int:
 
         service = WhisperTimestampedService()
         runtime_device = service._resolve_runtime_device()
+        from app.services.gpu_diagnostics import observe_model, inference_succeeded
         model_instance = service._load_model(model_name, runtime_device, whisper)
+        gpu_observation = observe_model(model_instance, model_name)
 
         audio = np.asarray(samples, dtype=np.float32)
         audio = whisper.pad_or_trim(audio)
@@ -93,6 +95,7 @@ def main() -> int:
 
         with torch.no_grad():
             _tokens, probs = model_instance.detect_language(mel)
+        inference_succeeded(gpu_observation)
         if isinstance(probs, list):
             probs_dict: dict[str, Any] = probs[0] if probs else {}
         else:

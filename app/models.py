@@ -79,6 +79,7 @@ class HostGPUInfo(BaseModel):
 
 
 class RuntimeMetricsResponse(BaseModel):
+    acceleration: dict | None = None
     timestamp: int
     cpu: HostCPUInfo
     memory: HostMemoryInfo

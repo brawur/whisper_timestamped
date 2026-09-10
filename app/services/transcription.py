@@ -204,7 +204,9 @@ class WhisperTimestampedService:
             ) from exc
 
         runtime_device = self._resolve_runtime_device()
+        from app.services.gpu_diagnostics import observe_model, inference_succeeded
         model_instance = self._load_model(model, runtime_device, whisper)
+        gpu_observation = observe_model(model_instance, model)
         resolved_vad = self._resolve_vad_mode(vad=vad, vad_mode=vad_mode)
         effective_beam_size, effective_best_of, effective_temperature = self._resolve_accuracy_options(
             beam_size=beam_size,
@@ -254,6 +256,7 @@ class WhisperTimestampedService:
                     temperature=effective_temperature,
                     fp16=runtime_device.startswith("cuda"),
                 )
+        inference_succeeded(gpu_observation)
         if not isinstance(result, dict):
             raise TranscriptionError("Whisper returned an unsupported response type.")
         return result

@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 import time
 
+from app.services.gpu_diagnostics import snapshot
+
 from app.models import HostCPUInfo, HostGPUInfo, HostMemoryInfo, RuntimeMetricsResponse
 
 try:
@@ -22,6 +24,7 @@ class HostMetricsCollector:
             cpu=HostCPUInfo(usage=round(self._cpu_usage(), 1)),
             memory=HostMemoryInfo(usage=round(self._memory_usage(), 1)),
             gpu=self._gpu_info(),
+            acceleration=snapshot(),
         )
 
     def _cpu_usage(self) -> float:
