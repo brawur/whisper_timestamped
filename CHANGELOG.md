@@ -6,6 +6,11 @@ The format is based on Keep a Changelog.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-10
+
+### Changed
+
+- The license report is generated with `pip-licenses --with-license-file --with-notice-file`, so the license and notice texts of the dependencies ship with the image. MIT requires the copyright and license notice "in all copies or substantial portions", Apache-2.0 section 4(a) requires the license copy explicitly and 4(d) the NOTICE file — a shipped image is such a copy.
 ## [2.0.7] - 2026-06-07
 
 ### Added
