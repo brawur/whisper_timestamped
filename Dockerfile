@@ -7,15 +7,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     WHISPER_MODEL_DIR=/models/whisper \
     TIKTOKEN_CACHE_DIR=/opt/tiktoken-cache
 
+ARG WORKER_SOURCE_REVISION=""
+
 WORKDIR /app
 
 RUN mkdir -p /models/whisper
 
+# Triton builds its CUDA helper at runtime; Python headers come from python:3.11.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg gcc libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml README.md /app/
+COPY pyproject.toml README.md LICENSE.md THIRD-PARTY-LICENSES.md /app/
+COPY scripts /app/scripts
 COPY app /app/app
 COPY docker-overrides /app/docker-overrides
 
@@ -25,7 +29,14 @@ RUN pip install --retries 10 --default-timeout 300 ".[local]"
 RUN pip install pip-licenses \
     && pip-licenses --format=json --with-urls --ignore-packages pip-licenses \
        --with-license-file --with-notice-file --no-license-path \
-       --output-file=/app/THIRD_PARTY_LICENSES.full.json
+       --output-file=/app/THIRD_PARTY_LICENSES.full.json \
+    && python /app/scripts/system_licenses.py \
+       --report /app/THIRD_PARTY_LICENSES.full.json \
+       --sources /app/DEBIAN_SOURCE_PACKAGES.json \
+    && python /app/scripts/source_inventory.py \
+       --report /app/THIRD_PARTY_LICENSES.full.json \
+       --output /app/THIRD_PARTY_SOURCES.json \
+       --worker-revision "$WORKER_SOURCE_REVISION"
 
 # If somebody drops a custom tiktoken_ext/openai_public.py into docker-overrides
 # (e.g. for downstream patches), copy it over the pip-installed file. No-op when
@@ -106,6 +117,17 @@ for name in ("gpt2", "r50k_base", "p50k_base", "p50k_edit", "cl100k_base", "o200
     enc = tiktoken.get_encoding(name)
     assert enc.encode("offline self-test"), name
     print(f"OK offline: {name}")
+PY
+
+# Check the compiler and Python headers without requiring a build GPU.
+RUN python - <<'PY'
+import pathlib, subprocess, sysconfig, tempfile
+with tempfile.TemporaryDirectory() as directory:
+    source = pathlib.Path(directory) / "probe.c"
+    source.write_text("#include <Python.h>\nint main(void) { return 0; }\n")
+    executable = str(pathlib.Path(directory) / "probe")
+    subprocess.run(["gcc", str(source), "-I" + sysconfig.get_path("include"), "-o", executable], check=True)
+    subprocess.run([executable], check=True)
 PY
 
 EXPOSE 8000

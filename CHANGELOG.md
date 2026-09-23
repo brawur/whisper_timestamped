@@ -6,6 +6,19 @@ The format is based on Keep a Changelog.
 
 ## [Unreleased]
 
+### Fixed
+- Include gcc and libc6-dev for Triton's CUDA-helper compilation during automatic
+  language detection; check the compiler and Python headers at image build time.
+
+### Changed
+- Generate version-specific source references for Debian and Python packages,
+  with explicit unresolved entries and release-source documentation.
+- Extend the full license report with Debian package notices and shared full
+  license texts; include exact source-package versions in a separate manifest.
+- Include worker license documentation in the image.
+- Reduce THIRD-PARTY-LICENSES.md to components with obligations beyond notices;
+  the generated report is the authoritative list. Release steps moved to the README.
+
 ## [2.1.0] - 2026-09-10
 
 ### Changed

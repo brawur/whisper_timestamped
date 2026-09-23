@@ -4,105 +4,89 @@ This repository is licensed under the **GNU Affero General Public License
 v3.0 or later (AGPL-3.0-or-later)**. See [LICENSE.md](LICENSE.md) for the
 full license text and the README for §13 (network-use) compliance notes.
 
-The AGPL applies because this service imports the `whisper-timestamped`
-Python library (itself AGPL-3.0) into its own process. The combined work is
-therefore subject to the AGPL, including the network-use clause: anyone who
-interacts with this service over a network is entitled to receive the
-complete corresponding source code of the running version. The `GET
-/license` endpoint exposes the source URL configured by the operator.
+## Authoritative component list
 
-## Bundled / Linked Components
+This document does not list every dependency. Each image build generates the
+authoritative inventory in `/app`:
 
-### whisper-timestamped (upstream library)
+- `THIRD_PARTY_LICENSES.full.json`: every installed Python and Debian package
+  with version, license, license text and copyright notices. Shared texts from
+  `/usr/share/common-licenses` are included once as separate entries; original
+  Debian notices remain in `/usr/share/doc/<package>/copyright`.
+- `DEBIAN_SOURCE_PACKAGES.json`: exact Debian source-package names and versions.
+- `THIRD_PARTY_SOURCES.json`: source references for these packages, including
+  explicitly unresolved entries.
 
-- Component: `whisper-timestamped` (Python package)
-- Licensor: LINAGORA / linto-ai contributors
-- **License: GNU Affero General Public License v3.0 (AGPL-3.0)**
+Permissive components (MIT, BSD, Apache-2.0 and similar) only require their
+license texts and notices, which the generated report contains. The components
+below carry obligations beyond that.
+
+## Components with further obligations
+
+### whisper-timestamped (AGPL-3.0)
+
 - Source: https://github.com/linto-ai/whisper-timestamped
-- License text: https://www.gnu.org/licenses/agpl-3.0.html
 
-This service imports `whisper_timestamped` as a Python library inside its own
+This service imports `whisper_timestamped` as a Python library into its own
 process (see `pyproject.toml` `[project.optional-dependencies].local`). The
-combined work is therefore subject to AGPL-3.0 terms, including the
-network-use clause (§13): if you offer the service over a network, recipients
-have the right to obtain the complete corresponding source of the modified
-version under AGPL-3.0.
+combined work is therefore subject to AGPL-3.0, including the network-use
+clause (§13): anyone who interacts with this service over a network is
+entitled to the complete corresponding source of the running version. The
+`GET /license` endpoint exposes the source URL configured via
+`WHISPER_TS_SOURCE_URL`. Modifications to this service or to
+`whisper-timestamped` must be published under AGPL-3.0 when the service is
+operated or distributed.
 
-### OpenAI Whisper (transitive via whisper-timestamped)
+The other services in the wider transcription stack (`gateway`,
+`parakeet_worker`, `diarization_worker`, `summary_worker`, `gatetop`) remain
+under MIT. They only communicate with this service via HTTP between separate
+processes / containers ("mere aggregation"). Do not import
+`whisper-timestamped` or copy its code into any of those repositories.
 
-- Component: `openai-whisper`
-- License: MIT License
-- Source: https://github.com/openai/whisper
+### GPL/LGPL Debian packages
 
-### Whisper Model Weights
+The image contains Debian packages under GPL or LGPL:
 
-- Components: `tiny`, `base`, `small`, `medium`, `large-v2`, `large-v3`, ...
-- Licensor: OpenAI
-- License: MIT License (model weights)
-- Source: https://github.com/openai/whisper
-- Model weights are downloaded at runtime and are not redistributed by this
-  repository. Review upstream for the authoritative terms.
+- **FFmpeg: GPL-2.0-or-later.** FFmpeg's source is mostly LGPL-2.1-or-later,
+  but Debian builds it with `--enable-gpl` and GPL-licensed files, so the
+  binaries (`ffmpeg`, `libavcodec`, `libavfilter`, `libpostproc`, ...) are
+  GPL-2.0-or-later, as stated in `/usr/share/doc/ffmpeg/copyright`. The build
+  also links GPL codec libraries such as `libx264`, `libx265` and `libxvidcore`,
+  which Debian installs as dependencies. Verified on 2026-09-23 for Debian 13.7
+  (`python:3.11-slim`), FFmpeg `7:7.1.5-0+deb13u1`.
+- **GCC and binutils: GPL-3.0-or-later.** Certain GCC runtime libraries carry
+  the GCC Runtime Library Exception 3.1.
+- **glibc development files:** primarily LGPL-2.1-or-later.
 
-## Runtime Dependencies (this repository's own code)
+GCC and libc6-dev are installed because Triton compiles its CUDA helper on
+first use. The component-specific Debian copyright notices are authoritative;
+a base-image update can change versions and dependencies.
 
-### FastAPI
+This service runs `ffmpeg` as a separate program to decode audio; it does not
+link FFmpeg into its own code. The GPL therefore does not extend to the
+worker, but it applies to distributing the FFmpeg binaries in the image.
 
-- License: MIT License
-- Source: https://github.com/tiangolo/fastapi
+Distributing the image requires offering the corresponding source of these
+packages; `DEBIAN_SOURCE_PACKAGES.json` and `THIRD_PARTY_SOURCES.json` identify
+it.
 
-### Uvicorn
+### NVIDIA CUDA libraries (proprietary)
 
-- License: BSD 3-Clause License
-- Source: https://github.com/encode/uvicorn
+The PyTorch wheels pull in NVIDIA runtime libraries (`nvidia-*` packages such
+as cuBLAS, cuDNN and NCCL). They are not open source; they are distributed
+under NVIDIA's license agreements, which the generated report contains.
 
-### python-multipart
+### Whisper model weights
 
-- License: Apache License 2.0
-- Source: https://github.com/Kludex/python-multipart
+The weights (MIT, OpenAI, https://github.com/openai/whisper) are not part of
+this image; they are mounted at `WHISPER_MODEL_DIR`. When weights are shipped
+with a product, their attribution belongs to that product's model license
+documentation.
 
-### PyTorch
+## Release documents
 
-- Components: `torch`
-- License: BSD 3-Clause License
-- Source: https://github.com/pytorch/pytorch
+How to produce and publish these documents for a release is described in the
+README under "Release License Documents".
 
-### NumPy
-
-- License: BSD 3-Clause License
-- Source: https://github.com/numpy/numpy
-
-### auditok
-
-- License: MIT License
-- Source: https://github.com/amsehili/auditok
-
-### tiktoken (used by Whisper for tokenization)
-
-- License: MIT License
-- Source: https://github.com/openai/tiktoken
-
-### FFmpeg (runtime, not bundled)
-
-- License: LGPL/GPL depending on build configuration
-- Source: https://ffmpeg.org/
-
-## Copyleft Notice — AGPL-3.0 Implications
-
-Because `whisper-timestamped` is linked into this service's process as a
-Python library, the combined work is a derivative work under AGPL-3.0.
-Practical consequences:
-
-- Anyone who interacts with this service over a network is entitled to
-  receive the complete corresponding source code of the running version
-  under AGPL-3.0 (§13). The `GET /license` endpoint surfaces the configured
-  `source_url` — set the `WHISPER_TS_SOURCE_URL` environment variable to a
-  publicly reachable location of the deployed source.
-- Any modifications made to this service or to `whisper-timestamped` must be
-  published under AGPL-3.0 when the service is operated.
-- The other services in the wider transcription stack (`gateway`,
-  `parakeet_worker`, `diarization_worker`, `summary_worker`, `gatetop`)
-  remain under MIT. They only communicate with this service via HTTP between
-  separate processes / containers ("mere aggregation"). Do not import
-  `whisper-timestamped` or copy its code into any of those repositories.
-- This notice is informational; it is not legal advice. Consult counsel if
-  you intend to redistribute or commercially offer this service.
+This notice is informational; it is not legal advice. Consult counsel if you
+intend to redistribute or commercially offer this service.

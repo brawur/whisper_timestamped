@@ -248,6 +248,42 @@ version that is actually running. To make this easy:
   operating it must be published under AGPL-3.0 and reflected in the public
   mirror.
 
+### Release License Documents
+
+Build release images with
+`--build-arg WORKER_SOURCE_REVISION=<published-commit-or-tag>` and verify that
+this exact source is publicly available at
+https://github.com/brawur/whisper_timestamped . An unset revision is
+explicitly left open, never silently replaced by the current main branch.
+
+`THIRD_PARTY_SOURCES.json` resolves Debian packages to their exact source
+version in Debian Snapshot (all files of the source package) and Python
+packages to version-specific PyPI source distributions with their published
+SHA-256 hashes. CPython is listed separately because the official Python image
+installs it outside Debian's package database. Missing source distributions,
+API failures and version mismatches remain `review-required`; no guessed
+release tag is presented as verified. `metadata-resolved` only confirms that
+version-matching metadata was retrieved, not that archives are complete, that
+libraries bundled inside wheels are covered, or that redistribution
+obligations are met. Worker and base-image provenance also require release
+review.
+
+`make licenses-transcription-whisper-docker` copies the license report and
+both source manifests into `LICENSES/transcription/whisper_timestamped_worker/`
+and records the image ID. It supplies the Git revision only for a clean worker
+checkout. For an image already built for release, extract the documents from
+that exact image (e.g.
+`docker run --rm --entrypoint cat IMAGE /app/THIRD_PARTY_SOURCES.json`); do not
+substitute the inventory from a later rebuild.
+
+Publish the documents as assets of the matching GitHub release and link that
+release from the image's registry description. Before publication, review open
+entries and the applicable component licenses, and check source downloads and
+their continued availability. External sources may be used where the
+applicable license and distribution method permit it; otherwise additionally
+provide the affected corresponding sources. No source archive is added to the
+runtime image.
+
 ### Effect on the Wider Stack
 
 The other services in the wider transcription stack (`gateway`,
