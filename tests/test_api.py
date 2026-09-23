@@ -178,6 +178,8 @@ def test_metadata() -> None:
             assert response.status_code == 200
             body = response.json()
             assert body["service"] == "whisper_timestamped"
+            assert body["worker_api"] == 1
+            assert isinstance(body["build_version"], str)
             assert body["supports_word_timestamps"] is True
             assert body["supports_speaker_diarization"] is False
             assert body["mode"] == "local_model"

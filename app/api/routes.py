@@ -15,6 +15,7 @@ from app.models import (
 )
 from app.services.host_metrics import get_host_metrics_collector
 from app.services.transcription import TranscriptionError, WhisperTimestampedService, get_service
+from app.contract import WORKER_API, build_version
 
 router = APIRouter()
 
@@ -76,6 +77,8 @@ async def health() -> HealthResponse:
 async def metadata() -> MetadataResponse:
     return MetadataResponse(
         service="whisper_timestamped",
+        worker_api=WORKER_API,
+        build_version=build_version(),
         supports_word_timestamps=True,
         supports_speaker_diarization=False,
         mode="local_model",

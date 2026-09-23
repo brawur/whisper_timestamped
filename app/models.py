@@ -10,6 +10,8 @@ class HealthResponse(BaseModel):
 
 class MetadataResponse(BaseModel):
     service: str
+    worker_api: int
+    build_version: str
     supports_word_timestamps: bool
     supports_speaker_diarization: bool
     mode: str

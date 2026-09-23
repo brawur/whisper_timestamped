@@ -6,6 +6,10 @@ The format is based on Keep a Changelog.
 
 ## [Unreleased]
 
+### Added
+- Report the interface contract in `/metadata`: `worker_api` (gateway interface
+  version, currently 1) and `build_version` (installed package version).
+
 ### Fixed
 - Include gcc and libc6-dev for Triton's CUDA-helper compilation during automatic
   language detection; check the compiler and Python headers at image build time.
