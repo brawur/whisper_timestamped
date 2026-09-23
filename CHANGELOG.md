@@ -6,6 +6,8 @@ The format is based on Keep a Changelog.
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-09-23
+
 ### Added
 - Report the interface contract in `/metadata`: `worker_api` (gateway interface
   version, currently 1) and `build_version` (installed package version).
