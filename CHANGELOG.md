@@ -6,6 +6,11 @@ The format is based on Keep a Changelog.
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-09-24
+
+### Changed
+- No changes; released with the 2.1.2 stack.
+
 ## [2.1.1] - 2026-09-23
 
 ### Added
