@@ -426,15 +426,24 @@ def test_resolve_model_source_prefers_mounted_model_dir_file() -> None:
                 os.environ["WHISPER_MODEL_DIR"] = previous
 
 
-def test_resolve_model_source_uses_model_dir_as_download_root() -> None:
+def test_resolve_model_source_never_downloads_missing_model() -> None:
+    # Ein fehlendes Modell ist ein Fehler; ein blosser Name wuerde whisper aus dem Internet laden lassen.
     with tempfile.TemporaryDirectory() as temp_dir:
         previous = os.environ.get("WHISPER_MODEL_DIR")
-        os.environ["WHISPER_MODEL_DIR"] = temp_dir
         try:
             service = transcription.WhisperTimestampedService()
-            resolved_model, download_root = service._resolve_model_source("large-v1")
-            assert resolved_model == "large-v1"
-            assert download_root == temp_dir
+            for model_dir in (temp_dir, None):
+                if model_dir is None:
+                    os.environ.pop("WHISPER_MODEL_DIR", None)
+                else:
+                    os.environ["WHISPER_MODEL_DIR"] = model_dir
+                for name in ("large-v1", "/does/not/exist.pt"):
+                    try:
+                        service._resolve_model_source(name)
+                    except transcription.TranscriptionError as error:
+                        assert "never downloaded" in str(error)
+                    else:
+                        raise AssertionError(f"{name} resolved without a local file")
         finally:
             if previous is None:
                 os.environ.pop("WHISPER_MODEL_DIR", None)

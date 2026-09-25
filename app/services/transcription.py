@@ -531,7 +531,12 @@ class WhisperTimestampedService:
                 if candidate_path.exists():
                     return str(candidate_path), model_dir
 
-        return model_name, model_dir
+        # Kein Nachladen: whisper.load_model wuerde einen blossen Namen aus dem Internet
+        # holen. Modelle liegen nur im Modellverzeichnis (bei der Installation abgelegt).
+        raise TranscriptionError(
+            f"Whisper model '{model_name}' not found in the model directory "
+            f"({model_dir or 'WHISPER_MODEL_DIR not set'}); models are never downloaded."
+        )
 
     def _model_dir(self) -> str | None:
         raw = os.environ.get("WHISPER_MODEL_DIR", "").strip()

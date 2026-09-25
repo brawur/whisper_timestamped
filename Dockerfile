@@ -132,4 +132,12 @@ PY
 
 EXPOSE 8000
 
+# Laufzeit ohne Verbindung nach aussen: Modelle kommen nur aus dem lokalen Verzeichnis,
+# keine Hub-Abfragen, keine Telemetrie. Erst hier gesetzt, damit der Build unberuehrt bleibt.
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    HF_DATASETS_OFFLINE=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    DO_NOT_TRACK=1
+
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
