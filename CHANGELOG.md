@@ -6,6 +6,14 @@ The format is based on Keep a Changelog.
 
 ## [Unreleased]
 
+## [2.1.3] - 2026-09-25
+
+### Changed
+- A model missing in `WHISPER_MODEL_DIR` is an error; the worker never
+  downloads models.
+- Runtime runs offline: `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`,
+  `HF_DATASETS_OFFLINE`, `HF_HUB_DISABLE_TELEMETRY`, `DO_NOT_TRACK`.
+
 ## [2.1.2] - 2026-09-24
 
 ### Changed
