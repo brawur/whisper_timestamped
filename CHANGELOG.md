@@ -7,6 +7,9 @@ The format is based on Keep a Changelog.
 ## [Unreleased]
 
 ### Added
+- Several GPUs (MCC-305 E3): `X-MCC-GPU` (GPU UUID) from the gateway limits the
+  transcription and language-probe job processes to that card
+  (`CUDA_VISIBLE_DEVICES`).
 - CUDA MPS (MCC-305): with `MCC_MPS_PIPE_DIRECTORY` set, the transcription and language-probe job processes become clients
   of the host's MPS daemon (`CUDA_MPS_PIPE_DIRECTORY`); without a running daemon
   they compute as before.

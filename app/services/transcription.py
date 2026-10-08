@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import re
+import contextvars
 import io
 import json
 import os
@@ -20,14 +22,47 @@ from app.models import (
 )
 
 
+# Karte des laufenden Auftrags (MCC-305 E3): das Gateway schickt ihre UUID als X-MCC-GPU;
+# GpuContextMiddleware setzt sie für die Dauer der Anfrage.
+job_gpu: contextvars.ContextVar[str] = contextvars.ContextVar("mcc_job_gpu", default="")
+_GPU_ID = re.compile(r"^(GPU|MIG)-[0-9A-Za-z-]+$")
+
+
+class GpuContextMiddleware:
+    """Übernimmt X-MCC-GPU (GPU-UUID) in job_gpu; ungültige Werte werden ignoriert."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        value = ""
+        if scope.get("type") == "http":
+            value = dict(scope.get("headers") or []).get(b"x-mcc-gpu", b"").decode("latin-1").strip()
+        if not _GPU_ID.match(value):
+            await self.app(scope, receive, send)
+            return
+        token = job_gpu.set(value)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            job_gpu.reset(token)
+
+
 def _job_process_env() -> dict[str, str] | None:
     """Umgebung der Job-Prozesse. Ist MCC_MPS_PIPE_DIRECTORY gesetzt, werden sie Clients des
     CUDA-MPS-Dienstes; läuft der Dienst nicht, rechnen sie ohne MPS. Nur Job-Prozesse, nie
-    der Worker-Hauptprozess (bei Parakeet läuft dort EZT, das MPS meiden soll)."""
+    der Worker-Hauptprozess (bei Parakeet läuft dort EZT, das MPS meiden soll).
+    Hat das Gateway eine Karte zugeteilt (X-MCC-GPU), sieht der Job-Prozess nur diese."""
     pipe_directory = os.environ.get("MCC_MPS_PIPE_DIRECTORY", "").strip()
-    if not pipe_directory:
+    gpu = job_gpu.get()
+    if not pipe_directory and not gpu:
         return None
-    return {**os.environ, "CUDA_MPS_PIPE_DIRECTORY": pipe_directory}
+    env = dict(os.environ)
+    if pipe_directory:
+        env["CUDA_MPS_PIPE_DIRECTORY"] = pipe_directory
+    if gpu:
+        env["CUDA_VISIBLE_DEVICES"] = gpu
+    return env
 
 
 class TranscriptionError(RuntimeError):
