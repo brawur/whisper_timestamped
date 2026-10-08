@@ -20,6 +20,16 @@ from app.models import (
 )
 
 
+def _job_process_env() -> dict[str, str] | None:
+    """Umgebung der Job-Prozesse. Ist MCC_MPS_PIPE_DIRECTORY gesetzt, werden sie Clients des
+    CUDA-MPS-Dienstes; läuft der Dienst nicht, rechnen sie ohne MPS. Nur Job-Prozesse, nie
+    der Worker-Hauptprozess (bei Parakeet läuft dort EZT, das MPS meiden soll)."""
+    pipe_directory = os.environ.get("MCC_MPS_PIPE_DIRECTORY", "").strip()
+    if not pipe_directory:
+        return None
+    return {**os.environ, "CUDA_MPS_PIPE_DIRECTORY": pipe_directory}
+
+
 class TranscriptionError(RuntimeError):
     def __init__(self, message: str, *, status_code: int = 502) -> None:
         super().__init__(message)
@@ -345,6 +355,7 @@ class WhisperTimestampedService:
                 *self._lid_worker_command(request_path, response_path),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_job_process_env(),
             )
             _stdout, stderr = await process.communicate()
             stderr_text = stderr.decode("utf-8", errors="replace") if stderr else ""
@@ -437,6 +448,7 @@ class WhisperTimestampedService:
                 *self._worker_command(request_path, response_path),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_job_process_env(),
             )
             if request_id:
                 async with self._active_process_lock:

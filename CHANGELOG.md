@@ -6,6 +6,11 @@ The format is based on Keep a Changelog.
 
 ## [Unreleased]
 
+### Added
+- CUDA MPS (MCC-305): with `MCC_MPS_PIPE_DIRECTORY` set, the transcription and language-probe job processes become clients
+  of the host's MPS daemon (`CUDA_MPS_PIPE_DIRECTORY`); without a running daemon
+  they compute as before.
+
 ## [2.1.3] - 2026-09-25
 
 ### Changed
