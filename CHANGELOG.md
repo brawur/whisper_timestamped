@@ -6,6 +6,20 @@ The format is based on Keep a Changelog.
 
 ## [Unreleased]
 
+### Fixed
+- Transcription no longer drops job parameters silently. A `TypeError` from
+  `whisper_timestamped.transcribe` used to trigger a second call without `vad`
+  and a third one without further decoding parameters (beam size, best of,
+  condition on previous text, no-speech threshold, disfluency detection), so a
+  job with `vad=true`/`vad_mode=auditok` could finish successfully without VAD
+  (the library defaults to `vad=False`). Now the call is made once with all
+  parameters; a `TypeError` fails the job with its cause. Before inference the
+  worker checks that the installed library accepts every parameter and fails
+  with the missing names otherwise (whisper-timestamped 1.15.9 in the image
+  accepts all, auditok 0.5.2 is installed). The worker logs requested and passed
+  VAD settings and the other decoding options, without audio, prompt text or
+  transcript; it does not claim that VAD found segments.
+
 ### Added
 - Several GPUs (MCC-305 E3): `X-MCC-GPU` (GPU UUID) from the gateway limits the
   transcription and language-probe job processes to that card

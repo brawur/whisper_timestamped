@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.metadata
+import inspect
+import logging
 import re
 import contextvars
 import io
@@ -63,6 +66,28 @@ def _job_process_env() -> dict[str, str] | None:
     if gpu:
         env["CUDA_VISIBLE_DEVICES"] = gpu
     return env
+
+
+logger = logging.getLogger(__name__)
+
+
+def _require_transcribe_parameters(transcribe: Any, options: dict[str, Any]) -> None:
+    """Bricht ab, wenn whisper_timestamped.transcribe einen der Auftragsparameter nicht kennt."""
+    try:
+        parameters = inspect.signature(transcribe).parameters
+    except (TypeError, ValueError):
+        return
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()):
+        return
+    missing = sorted(name for name in options if name not in parameters)
+    if missing:
+        try:
+            version = importlib.metadata.version("whisper-timestamped")
+        except importlib.metadata.PackageNotFoundError:
+            version = "unknown"
+        raise TranscriptionError(
+            f"whisper-timestamped {version} does not support required parameters: {', '.join(missing)}"
+        )
 
 
 class TranscriptionError(RuntimeError):
@@ -259,48 +284,38 @@ class WhisperTimestampedService:
             temperature=temperature,
             accurate=accurate,
         )
+        options: dict[str, Any] = {
+            "task": task,
+            "language": language,
+            "initial_prompt": prompt,
+            "beam_size": effective_beam_size,
+            "best_of": effective_best_of,
+            "temperature": effective_temperature,
+            "condition_on_previous_text": condition_on_previous_text,
+            "vad": resolved_vad,
+            "no_speech_threshold": no_speech_threshold,
+            "detect_disfluencies": detect_disfluencies,
+            "fp16": runtime_device.startswith("cuda"),
+        }
+        # Kein Parameter darf still entfallen: fehlt der Bibliothek einer, scheitert der Auftrag
+        # vor der Inferenz mit Namen statt abgeschwaecht weiterzulaufen.
+        _require_transcribe_parameters(whisper.transcribe, options)
+        # Angefordert und tatsaechlich uebergeben; ob die Bibliothek VAD-Segmente gefunden hat,
+        # meldet sie nicht. Kein Audio, kein Prompttext, kein Transkript im Log.
+        logger.info(
+            "whisper transcribe: model=%s task=%s language=%s vad_requested=%s vad_mode_requested=%s vad_passed=%r "
+            "detect_disfluencies=%s condition_on_previous_text=%s beam_size=%s best_of=%s accurate=%s prompt_chars=%d",
+            model, task, language or "auto", vad, vad_mode or "", resolved_vad, detect_disfluencies,
+            condition_on_previous_text, effective_beam_size, effective_best_of, accurate, len(prompt or ""),
+        )
         try:
-            result = whisper.transcribe(
-                model_instance,
-                wav_path,
-                task=task,
-                language=language,
-                initial_prompt=prompt,
-                beam_size=effective_beam_size,
-                best_of=effective_best_of,
-                temperature=effective_temperature,
-                condition_on_previous_text=condition_on_previous_text,
-                vad=resolved_vad,
-                no_speech_threshold=no_speech_threshold,
-                detect_disfluencies=detect_disfluencies,
-                fp16=runtime_device.startswith("cuda"),
-            )
-        except TypeError:
-            try:
-                result = whisper.transcribe(
-                    model_instance,
-                    wav_path,
-                    task=task,
-                    language=language,
-                    initial_prompt=prompt,
-                    beam_size=effective_beam_size,
-                    best_of=effective_best_of,
-                    temperature=effective_temperature,
-                    condition_on_previous_text=condition_on_previous_text,
-                    no_speech_threshold=no_speech_threshold,
-                    detect_disfluencies=detect_disfluencies,
-                    fp16=runtime_device.startswith("cuda"),
-                )
-            except TypeError:
-                result = whisper.transcribe(
-                    model_instance,
-                    wav_path,
-                    task=task,
-                    language=language,
-                    initial_prompt=prompt,
-                    temperature=effective_temperature,
-                    fp16=runtime_device.startswith("cuda"),
-                )
+            result = whisper.transcribe(model_instance, wav_path, **options)
+        except TypeError as exc:
+            # Ein TypeError aus der Inferenz ist ein Fehler, kein Signal fuer einen zweiten Aufruf
+            # mit weniger Parametern.
+            logger.error("whisper transcribe failed: model=%s vad_passed=%r: %s: %s",
+                         model, resolved_vad, type(exc).__name__, exc)
+            raise TranscriptionError(f"Whisper transcription failed: {type(exc).__name__}: {exc}") from exc
         inference_succeeded(gpu_observation)
         if not isinstance(result, dict):
             raise TranscriptionError("Whisper returned an unsupported response type.")
