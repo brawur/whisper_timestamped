@@ -21,7 +21,9 @@ dev = [
 ]
 local = [
   "numpy>=1.26.0,<3.0.0",
-  "torch>=2.3.0,<3.0.0",
+  # Fest: torch 2.14.1 (cuDNN 9.24) laesst large-v3 an kippligen Stellen in
+  # Wiederholungsschleifen laufen; 2.12.0 (cuDNN 9.20) rechnet wie bisher.
+  "torch==2.12.0",
   "auditok>=0.1.8,<1.0.0",
   "whisper-timestamped>=1.15.6,<2.0.0",
 ]

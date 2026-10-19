@@ -6,7 +6,19 @@ The format is based on Keep a Changelog.
 
 ## [Unreleased]
 
+### Changed
+- The image installs its runtime packages from `requirements.lock` (exact
+  versions with hashes, `--no-deps --require-hashes`) instead of resolving
+  `.[local]` on every build, so a rebuild reproduces torch 2.12.0, numpy,
+  whisper-timestamped and auditok exactly.
+
 ### Fixed
+- torch is pinned to 2.12.0 (was `>=2.3.0,<3.0.0`). Images built since early
+  October pulled torch 2.14.1 with cuDNN 9.24, under which large-v3 fell into
+  repetition loops at borderline passages (reference audiobook: VAD output at
+  05:08, 06:54 and 10:24, base output at 09:50). Same code, file and GPU with
+  torch 2.12.0 / cuDNN 9.20 transcribe these passages correctly again, as the
+  2.0.7 worker did.
 - Transcription no longer drops job parameters silently. A `TypeError` from
   `whisper_timestamped.transcribe` used to trigger a second call without `vad`
   and a third one without further decoding parameters (beam size, best of,

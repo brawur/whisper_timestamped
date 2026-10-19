@@ -18,13 +18,16 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg gcc libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml README.md LICENSE.md THIRD-PARTY-LICENSES.md /app/
+COPY pyproject.toml README.md LICENSE.md THIRD-PARTY-LICENSES.md requirements.lock /app/
 COPY scripts /app/scripts
 COPY app /app/app
 COPY docker-overrides /app/docker-overrides
 
 RUN pip install --upgrade pip setuptools wheel
-RUN pip install --retries 10 --default-timeout 300 ".[local]"
+# Alle Laufzeitpakete exakt nach Lock (Versionen + Hashes); ein neuer Build zieht
+# nichts Neueres. Erzeugt mit ../scripts/lock-from-image.py.
+RUN pip install --retries 10 --default-timeout 300 --no-deps --require-hashes -r requirements.lock \
+    && pip install --no-deps .
 
 RUN pip install pip-licenses \
     && pip-licenses --format=json --with-urls --ignore-packages pip-licenses \
