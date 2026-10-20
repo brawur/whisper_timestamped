@@ -7,6 +7,12 @@ The format is based on Keep a Changelog.
 ## [Unreleased]
 
 ### Changed
+- Reproducible image: the base image is pinned by digest
+  (`python:3.11-slim@sha256:e88e9763…`) and Debian packages come from a fixed
+  snapshot.debian.org state (`DEBIAN_SNAPSHOT=20261019T000000Z`), so a rebuild
+  no longer pulls newer Python, ffmpeg or system libraries.
+- pip, setuptools, wheel and pip-licenses are part of `requirements.lock` now;
+  the unpinned `pip install --upgrade …` and `pip install pip-licenses` steps are gone.
 - The image installs its runtime packages from `requirements.lock` (exact
   versions with hashes, `--no-deps --require-hashes`) instead of resolving
   `.[local]` on every build, so a rebuild reproduces torch 2.12.0, numpy,

@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -13,8 +13,14 @@ WORKDIR /app
 
 RUN mkdir -p /models/whisper
 
+# Fester Stand: Basisimage per Digest, Debian-Pakete (ffmpeg ...) aus einem festen Snapshot.
+# Ein neuer Build bringt so keine neueren Versionen; zum Anheben beides bewusst aendern.
+ARG DEBIAN_SNAPSHOT=20261019T000000Z
+RUN sed -i -e "s|http://deb.debian.org/debian-security|http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}|" \
+        -e "s|http://deb.debian.org/debian|http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}|" \
+        /etc/apt/sources.list.d/debian.sources
 # Triton builds its CUDA helper at runtime; Python headers come from python:3.11.
-RUN apt-get update \
+RUN apt-get -o Acquire::Check-Valid-Until=false update \
     && apt-get install -y --no-install-recommends ffmpeg gcc libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -23,14 +29,12 @@ COPY scripts /app/scripts
 COPY app /app/app
 COPY docker-overrides /app/docker-overrides
 
-RUN pip install --upgrade pip setuptools wheel
-# Alle Laufzeitpakete exakt nach Lock (Versionen + Hashes); ein neuer Build zieht
-# nichts Neueres. Erzeugt mit ../scripts/lock-from-image.py.
+# Alle Python-Pakete einschliesslich pip, setuptools, wheel und pip-licenses exakt nach
+# Lock (Versionen + Hashes). Erzeugt mit ../scripts/lock-from-image.py.
 RUN pip install --retries 10 --default-timeout 300 --no-deps --require-hashes -r requirements.lock \
     && pip install --no-deps .
 
-RUN pip install pip-licenses \
-    && pip-licenses --format=json --with-urls --ignore-packages pip-licenses \
+RUN pip-licenses --format=json --with-urls --ignore-packages pip-licenses \
        --with-license-file --with-notice-file --no-license-path \
        --output-file=/app/THIRD_PARTY_LICENSES.full.json \
     && python /app/scripts/system_licenses.py \
